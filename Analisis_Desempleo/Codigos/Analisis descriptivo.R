@@ -346,12 +346,12 @@ df_fourier = df_fourier %>%
 
 gg_fourier = df_fourier %>%
   ggplot(aes(x = Fecha)) +
-  geom_line(aes(y = y, color = "Serie sin tendencia"), alpha = 0.6) +
-  geom_line(aes(y = estacional_fourier, color = "Estacionalidad Fourier"), linewidth = 1) +
+  geom_line(aes(y = y, color = 'Serie sin tendencia'), alpha = 0.6) +
+  geom_line(aes(y = estacional_fourier, color = 'Estacionalidad Fourier'), linewidth = 1) +
   scale_color_manual(values = c(
-    "Serie sin tendencia" = "black",
-    "Estacionalidad Fourier" = "red")) +
-  labs(title = "Estacionalidad estimada con series de Fourier",x = "Fecha",y = "Desempleo",color = "Serie") +
+    'Serie sin tendencia' = 'black',
+    'Estacionalidad Fourier' = 'red')) +
+  labs(title = 'Estacionalidad estimada con series de Fourier',x = 'Fecha',y = 'Desempleo',color = 'Serie') +
   theme_custom()
 gg_fourier
 # Dado que el periodograma muestra un pico principal en la frecuencia anual y armónicos en 6, 4 y 3 meses, 
@@ -367,24 +367,24 @@ df_fourier = df_fourier %>%
          resid_gam = resid(modelo_gam))
 gg_gam = df_fourier %>%
   ggplot(aes(x = Fecha)) +
-  geom_line(aes(y = y, color = "Serie sin tendencia"), alpha = 0.6) +
-  geom_line(aes(y = estacional_gam, color = "Estacionalidad GAM"), linewidth = 1) +
+  geom_line(aes(y = y, color = 'Serie sin tendencia'), alpha = 0.6) +
+  geom_line(aes(y = estacional_gam, color = 'Estacionalidad GAM'), linewidth = 1) +
   scale_color_manual(values = c(
-    "Serie sin tendencia" = "black",
-    "Estacionalidad GAM" = "blue")) +
-  labs(title = "Estacionalidad estimada con modelo GAM",x = "Fecha",y = "Desempleo",color = "Serie") +
+    'Serie sin tendencia' = 'black',
+    'Estacionalidad GAM' = 'blue')) +
+  labs(title = 'Estacionalidad estimada con modelo GAM',x = 'Fecha',y = 'Desempleo',color = 'Serie') +
   theme_custom()
 gg_gam
 
 # Comparacion de los dos modelos
 gg_gam_fourier = df_fourier %>%
   ggplot(aes(x = Fecha)) +
-  geom_line(aes(y = y, color = "Serie sin tendencia"), alpha = 0.6) +
-  geom_line(aes(y = estacional_gam, color = "Estacionalidad GAM"), linewidth = 1) +
+  geom_line(aes(y = y, color = 'Serie sin tendencia'), alpha = 0.6) +
+  geom_line(aes(y = estacional_gam, color = 'Estacionalidad GAM'), linewidth = 1) +
   geom_line(aes(y = estacional_fourier, color = 'Estacionalidad Fourier'), linewidth = 1)+
-  scale_color_manual(values = c("Serie sin tendencia" = "black", "Estacionalidad GAM" = "blue",
-                                "Estacionalidad Fourier" = "red")) +
-  labs(title = "Estacionalidad estimada con modelo GAM y series de Fourier",x = "Fecha",y = "Desempleo",color = "Serie") +
+  scale_color_manual(values = c('Serie sin tendencia' = 'black', 'Estacionalidad GAM' = 'blue',
+                                'Estacionalidad Fourier' = 'red')) +
+  labs(title = 'Estacionalidad estimada con modelo GAM y series de Fourier',x = 'Fecha',y = 'Desempleo',color = 'Serie') +
   scale_x_date(breaks = '3 years')+
   theme_custom()
 gg_gam_fourier

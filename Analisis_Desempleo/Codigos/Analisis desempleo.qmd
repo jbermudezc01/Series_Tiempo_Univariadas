@@ -1,0 +1,240 @@
+---
+title: "Análisis descriptivo: Tasa de desempleo Colombia"
+format: 
+  html:
+    toc: true
+    number-sections: true
+    embed-resources: true
+---
+
+## Librerías y configuración
+
+```{r}
+#| message: false
+#| warning: false
+
+rm(list = ls())
+
+library(pacman)
+p_load(
+  tidyverse, TSstudio, readxl, zoo, xts, feasts, fable, timetk,
+  tsibble, lubridate, astsa, car, forecast, VGAM, TSA,
+  nonlinearTseries, tseriesChaos, plotly, rstanarm, rstan,
+  bayesplot, sarima, patchwork, mgcv, broom, biwavelet, ggtime
+)
+
+theme_custom = function() {
+  theme_bw() +
+    theme(
+      plot.title = element_text(face = 'bold', hjust = 0.5)
+    )
+}
+```
+
+## Carga y limpieza de datos
+```{r}
+#| warning: false
+#| message: false
+dir_base   = dirname(getwd())
+dir_input  = paste0(dir_base, '/Input')
+
+desempleo_raw = read_xlsx(
+  paste0(dir_input, '/Base Series Empleo.xlsx'),
+  sheet = 'Series de datos',
+  skip = 2
+)
+
+desempleo = desempleo_raw %>%
+  select(...1, contains("desempleo")) %>% 
+  set_names('Fecha','Desempleo13areas','Tasa_Desempleo') %>% 
+  select(Fecha, Tasa_Desempleo) %>% 
+  mutate(Fecha = as.Date(as.numeric(Fecha), origin = '1899-12-30')) %>% 
+  filter(!is.na(Fecha))
+```
+
+## Construccion de series
+```{r}
+#| warning: false
+#| message: false
+desempleo_ts = ts(desempleo$Tasa_Desempleo, start = c(2001,1), frequency = 12)
+
+desempleo_xts = xts(desempleo$Tasa_Desempleo, order.by = desempleo$Fecha)
+colnames(desempleo_xts) = 'Tasa_Desempleo'
+
+desempleo_tsibble = desempleo %>%
+  as_tsibble(index = Fecha) %>% 
+  mutate(Fecha = yearmonth(Fecha))
+```
+
+## Análisis descriptivo
+### Visualización
+```{r}
+#| warning: false
+#| message: false
+ggplot(desempleo_tsibble, aes(x = as.Date(Fecha), y = Tasa_Desempleo)) +
+  geom_line() +
+  labs(title = "Tasa de Desempleo Nacional", y = "%") +
+  scale_x_date(date_breaks = '3 years') +
+  theme_custom()
+```
+
+### Transformación Box Cox
+```{r}
+#| warning: false
+#| message: false
+lambda_optim = BoxCox.lambda(desempleo_ts)
+boxCox(desempleo_ts ~ 1)
+
+desempleo_boxcox = BoxCox(desempleo_ts, lambda = lambda_optim)
+```
+```{r}
+#| warning: false
+#| message: false
+tiempo = time(desempleo_ts)
+
+df_plotly = data.frame(
+  fecha = tiempo,
+  original = as.numeric(desempleo_ts),
+  transformado = as.numeric(desempleo_boxcox)
+)
+
+plot_ly(df_plotly, x = ~fecha) %>%
+  add_lines(y = ~original, name = 'Original') %>%
+  add_lines(y = ~transformado, name = 'Transformado', yaxis = 'y2') %>%
+  layout(
+    title = "Transformación Box-Cox",
+    yaxis2 = list(overlaying = "y", side = "right")
+  )
+```
+
+### Tendencia
+```{r}
+#| warning: false
+#| message: false
+ggAcf(desempleo_ts) +
+  labs(title = "ACF Desempleo") +
+  theme_custom()
+```
+```{r}
+#| warning: false
+#| message: false
+plot(decompose(desempleo_ts))
+```
+### Tendencia con LOESS
+```{r}
+#| warning: false
+#| message: false
+desempleo_tsibble %>%
+  mutate(
+    loess_02 = smooth_vec(Tasa_Desempleo, span = 0.2),
+    loess_05 = smooth_vec(Tasa_Desempleo, span = 0.5)
+  ) %>%
+  ggplot(aes(as.Date(Fecha))) +
+  geom_line(aes(y = Tasa_Desempleo), alpha = 0.5) +
+  geom_line(aes(y = loess_02), color = "blue") +
+  geom_line(aes(y = loess_05), color = "red") +
+  theme_custom()
+```
+### STL
+```{r}
+#| warning: false
+#| message: false
+decomp_STL = desempleo_tsibble %>% 
+  model(STL(Tasa_Desempleo ~ trend() + season(window = "periodic"), robust = TRUE))
+
+decomp_STL %>%
+  components() %>%
+  autoplot() +
+  theme_custom()
+```
+## Eliminacion de tendencia
+```{r}
+#| warning: false
+#| message: false
+trend_stl = (decomp_STL %>% components())$trend
+
+df_stl = desempleo_tsibble %>%
+  mutate(
+    STL_sin_tendencia = Tasa_Desempleo - trend_stl
+  )
+```
+## Estacionalidad
+### Diagnóstico
+```{r}
+#| warning: false
+#| message: false
+df_stl %>%
+  mutate(Fecha = as.Date(Fecha)) %>%
+  plot_seasonal_diagnostics(
+    .date_var = Fecha,
+    .value = STL_sin_tendencia,
+    .interactive = FALSE
+  )
+```
+### Modelo con dummies
+```{r}
+#| warning: false
+#| message: false
+df_stl = df_stl %>%
+  mutate(mes = month(Fecha))
+
+modelo_dummies = lm(STL_sin_tendencia ~ factor(mes) - 1, data = df_stl)
+
+summary(modelo_dummies)
+```
+### Fourier
+```{r}
+#| warning: false
+#| message: false
+df_fourier = df_stl %>%
+  mutate(t = 1:n())
+
+df_fourier = df_fourier %>%
+  mutate(
+    cos1 = cos(2*pi*t/12),
+    sin1 = sin(2*pi*t/12),
+    cos2 = cos(4*pi*t/12),
+    sin2 = sin(4*pi*t/12)
+  )
+
+mod_fourier = lm(STL_sin_tendencia ~ cos1 + sin1 + cos2 + sin2, data = df_fourier)
+
+summary(mod_fourier)
+```
+### GAM
+```{r}
+#| warning: false
+#| message: false
+modelo_gam = gam(STL_sin_tendencia ~ s(month(Fecha), bs = "cc"), data = df_fourier)
+
+summary(modelo_gam)
+```
+### Comparación de modelos
+```{r}
+AIC(modelo_dummies, mod_fourier, modelo_gam)
+```
+## Serie final
+```{r}
+#| warning: false
+#| message: false
+df_stl = df_stl %>%
+  mutate(
+    estacional = fitted(modelo_dummies),
+    sin_estacional = STL_sin_tendencia - estacional
+  )
+```
+```{r}
+#| warning: false
+#| message: false
+ggplot(df_stl, aes(x = as.Date(Fecha), y = sin_estacional)) +
+  geom_line() +
+  labs(title = "Serie sin tendencia ni estacionalidad") +
+  theme_custom()
+```
+### ACF y PACF
+```{r}
+#| warning: false
+#| message: false
+ggAcf(df_stl$sin_estacional) + theme_custom()
+ggPacf(df_stl$sin_estacional) + theme_custom()
+```
