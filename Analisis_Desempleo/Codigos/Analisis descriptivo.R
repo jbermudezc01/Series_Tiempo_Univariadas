@@ -244,7 +244,7 @@ gg_acf_stl
 
 # Ambas series muestran dos cosas clave: caida rapida, por lo cual no habria presencia de raiz unitaria
 # 2. Presentan significancia estadistica en rezago 12 y 24, por lo cual habria presencia de estacionalidad
-# y por tanto la serie no es estacionaria. Para el resto del analisis nos quedaremos con la serie sin 
+# y por tanto la serie no es estacionaria. Para el resto del analisis nos quedaremos con la serie sin
 # tendencia a traves de STL, ya que preserva de una mejor manera el ciclo y aparte no distorsiona mucho
 # la interpretacion economica como si lo hace la diferenciacion.
 

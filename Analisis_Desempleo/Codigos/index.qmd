@@ -16,25 +16,24 @@ format:
 rm(list = ls())
 
 library(pacman)
-p_load(
-  tidyverse, TSstudio, readxl, zoo, xts, feasts, fable, timetk,
+p_load(tidyverse, TSstudio, readxl, zoo, xts, feasts, fable, timetk,
   tsibble, lubridate, astsa, car, forecast, VGAM, TSA,
   nonlinearTseries, tseriesChaos, plotly, rstanarm, rstan,
-  bayesplot, sarima, patchwork, mgcv, broom, biwavelet, ggtime
-)
+  bayesplot, sarima, patchwork, mgcv, broom, biwavelet, ggtime)
 
+# Tema para usar en ggplot
 theme_custom = function() {
   theme_bw() +
-    theme(
-      plot.title = element_text(face = 'bold', hjust = 0.5)
-    )
+    theme(plot.title = element_text(face = 'bold', hjust = 0.5))
 }
 ```
 
 ## Carga y limpieza de datos
+
 ```{r}
 #| warning: false
 #| message: false
+# Cargar los datos 
 dir_base   = dirname(getwd())
 dir_input  = paste0(dir_base, '/Input')
 
@@ -43,7 +42,7 @@ desempleo_raw = read_xlsx(
   sheet = 'Series de datos',
   skip = 2
 )
-
+# Seleccionar variables de binteres, cargar correctamente la fecha
 desempleo = desempleo_raw %>%
   select(...1, contains("desempleo")) %>% 
   set_names('Fecha','Desempleo13areas','Tasa_Desempleo') %>% 
@@ -53,6 +52,9 @@ desempleo = desempleo_raw %>%
 ```
 
 ## Construccion de series
+
+Se pueden crear diversos tipos de objetos de series de tiempo. Entre ellos se encuentran el *ts*, el *xts* y el *tsibble*. Cada uno tiene sus ventajas, pero el que más se usará será el tsibble, debido a su integración con el universo tidyverse. Sin embargo, el objeto ts y xts se van a utilizar para algunas funciones en específico.
+
 ```{r}
 #| warning: false
 #| message: false
@@ -67,7 +69,10 @@ desempleo_tsibble = desempleo %>%
 ```
 
 ## Análisis descriptivo
-### Visualización
+
+### Gráfica
+A simple vista, pareciera que la varianza marginal es constante y por tanto no se necesitaría una transformación boxcox. Por otro lado, parece que puede tener una tendencia, particularmente desde el inicio de la serie hasta el 2018, y posteriormente a partir del 2020 hasta el presente. Claramente tiene un ciclo periódico, en donde los datos de enero son mayores en promedio, lo cual será analizado más adelante.
+
 ```{r}
 #| warning: false
 #| message: false
@@ -79,14 +84,17 @@ ggplot(desempleo_tsibble, aes(x = as.Date(Fecha), y = Tasa_Desempleo)) +
 ```
 
 ### Transformación Box Cox
+Utilizaremos la funcion BoxCox.lambda para ver el lambda óptimo, y además, la función boxCox del paquete car nos dará una gráfica con posibles lambdas. Debemos recordar que si el lambda óptimo está cercano a 1, no es necesaria la transformación boxcox.
 ```{r}
 #| warning: false
 #| message: false
 lambda_optim = BoxCox.lambda(desempleo_ts)
+lambda_optim
 boxCox(desempleo_ts ~ 1)
 
 desempleo_boxcox = BoxCox(desempleo_ts, lambda = lambda_optim)
 ```
+La transformación Box-Cox no muestra una mejora clara en la estabilización de la varianza. Además, como el valor óptimo de λ es cercano a -1, la serie transformada pierde interpretación económica al aproximarse a una transformación inversa. En consecuencia, se continuará el análisis utilizando la serie original.
 ```{r}
 #| warning: false
 #| message: false
@@ -108,6 +116,7 @@ plot_ly(df_plotly, x = ~fecha) %>%
 ```
 
 ### Tendencia
+Veamos el ACF de la serie. Tiene un decaimiento muy lento, lo cual puede indicar presencia de tendencia estocástica
 ```{r}
 #| warning: false
 #| message: false
@@ -115,27 +124,65 @@ ggAcf(desempleo_ts) +
   labs(title = "ACF Desempleo") +
   theme_custom()
 ```
+
+Presenta tendencia, pero tambien un quiebre estructural en 2020, para el cual se deberían usar métodos más sofisticados de tendencia.
 ```{r}
 #| warning: false
 #| message: false
 plot(decompose(desempleo_ts))
 ```
+
 ### Tendencia con LOESS
+La estimación de la tendencia mediante LOESS evidencia una alta sensibilidad al parámetro de suavizamiento (span). Valores bajos permiten capturar fluctuaciones de corto plazo, incluyendo shocks transitorios como el observado en 2020, mientras que valores altos producen una tendencia más estable. Sin embargo, todos los spans muestran una tendencia negativa, es decir de mejoramiento del empleo, a excepción del choque del 2020, el cual se debe tratar independientemente.
 ```{r}
 #| warning: false
 #| message: false
 desempleo_tsibble %>%
-  mutate(
-    loess_02 = smooth_vec(Tasa_Desempleo, span = 0.2),
-    loess_05 = smooth_vec(Tasa_Desempleo, span = 0.5)
-  ) %>%
+  mutate(loess_03 = smooth_vec(Tasa_Desempleo, span = 0.2),
+         loess_05 = smooth_vec(Tasa_Desempleo, span = 0.5),
+         loess_07 = smooth_vec(Tasa_Desempleo, span = 0.8)) %>%
   ggplot(aes(as.Date(Fecha))) +
-  geom_line(aes(y = Tasa_Desempleo), alpha = 0.5) +
-  geom_line(aes(y = loess_02), color = "blue") +
-  geom_line(aes(y = loess_05), color = "red") +
+  geom_line(aes(y = Tasa_Desempleo, color = 'Serie original'), alpha = 0.6) +
+  geom_line(aes(y = loess_03, color = 'LOESS (span = 0.2)')) +
+  geom_line(aes(y = loess_05, color = 'LOESS (span = 0.5)')) +
+  geom_line(aes(y = loess_07, color = 'LOESS (span = 0.8)')) +
+  labs(title = 'Comparación de suavizamientos LOESS', x = 'Fecha',
+       y = 'Tasa de desempleo', color = 'Serie') +
+  scale_color_manual(values = c('Serie original' = 'black', 'LOESS (span = 0.2)' = 'blue',
+    'LOESS (span = 0.5)' = 'red','LOESS (span = 0.8)' = 'green')) +
+  scale_x_date(breaks = '3 years')+
   theme_custom()
 ```
+### Kernel gaussiano
+Otra forma de estimar la tendencia: suavizamiento con kernel gaussiano.
+```{r}
+#| warning: false
+#| message: false
+n = nrow(desempleo_tsibble)
+x = 1:n
+ks_6  = ksmooth(x, desempleo_tsibble$Tasa_Desempleo, kernel = 'normal', bandwidth = 6)
+ks_12 = ksmooth(x, desempleo_tsibble$Tasa_Desempleo, kernel = 'normal', bandwidth = 12)
+ks_24 = ksmooth(x, desempleo_tsibble$Tasa_Desempleo, kernel = 'normal', bandwidth = 24)
+
+df_ks = data.frame(Fecha = as.Date(desempleo_tsibble$Fecha),ks_6  = ks_6$y,ks_12 = ks_12$y,ks_24 = ks_24$y)
+
+# Gráfico
+gg_kernel = desempleo_tsibble %>%
+  ggplot(aes(as.Date(Fecha))) +
+  geom_line(aes(y = Tasa_Desempleo, color = 'Serie original'), alpha = 0.4) +
+  geom_line(data = df_ks, aes(y = ks_6,  color = 'Kernel (6 meses)'), linewidth = 1) +
+  geom_line(data = df_ks, aes(y = ks_12, color = 'Kernel (12 meses)'), linewidth = 1) +
+  geom_line(data = df_ks, aes(y = ks_24, color = 'Kernel (24 meses)'), linewidth = 1) +
+  labs(title = 'Suavizamiento con Kernel Gaussiano',y = 'Tasa de desempleo', x = 'Fecha',
+       color = 'Método') +
+  scale_color_manual(values = c('Serie original' = 'black', 'Kernel (6 meses)' = 'blue',
+                                'Kernel (12 meses)' = 'red','Kernel (24 meses)' = 'green')) +
+  scale_x_date(breaks = '3 years') +
+  theme_custom()
+gg_kernel
+```
 ### STL
+Se escogerá este método para probar eliminación de tendencia, dado que el metodo robust = T es apto para outliers.
 ```{r}
 #| warning: false
 #| message: false
@@ -147,31 +194,117 @@ decomp_STL %>%
   autoplot() +
   theme_custom()
 ```
+
 ## Eliminacion de tendencia
+Hay dos alternativas, la primera es restando una tendencia estimada. La segunda es diferenciar la serie. Vamos a realizar ambas alternativas y analizar el acf de los resultados para ver cual es la mas apta.
+En primer lugar, eliminamos la tendencia.
 ```{r}
 #| warning: false
 #| message: false
 trend_stl = (decomp_STL %>% components())$trend
 
 df_stl = desempleo_tsibble %>%
-  mutate(
-    STL_sin_tendencia = Tasa_Desempleo - trend_stl
-  )
+  mutate(STL_sin_tendencia = Tasa_Desempleo - trend_stl)
 ```
+Ahora, diferenciamos la serie
+```{r}
+#| warning: false
+#| message: false
+df_diff = desempleo_tsibble %>%
+  mutate(Diff = c(NA, diff(Tasa_Desempleo))) 
+
+df_final = df_stl %>%
+  select(Fecha, STL_sin_tendencia) %>% 
+  left_join(df_diff %>% select(Fecha, Diff), by = 'Fecha') %>%
+  pivot_longer(-Fecha, names_to = 'Serie', values_to = 'Valor') %>%
+  filter(!is.na(Valor))
+
+df_final %>%
+  ggplot(aes(x = as.Date(Fecha), y = Valor, color = Serie)) +
+  geom_line() +
+  labs(title = 'Comparación: Serie sin tendencia (STL) vs Diferenciada', x = 'Fecha',
+       y = 'Valor',color = 'Método') +
+  scale_x_date(date_breaks = '3 years') +
+  scale_color_manual(values = c('STL_sin_tendencia' = 'blue','Diff' = 'red')) +
+  theme_custom()
+```
+Ambas transformaciones logran eliminar la tendencia de la serie, generando procesos centrados alrededor de cero. No obstante, la diferenciación produce una mayor volatilidad y amplifica los shocks transitorios, mientras que la serie ajustada por STL conserva mejor la estructura cíclica subyacente. Esto sugiere que, para análisis de dinámica de corto plazo, la diferenciación puede ser útil, mientras que STL ofrece una representación más estable de las fluctuaciones alrededor de la tendencia.
+
+Ahora, revisemos los acf de las series sin tendencia. Ambas series muestran dos cosas clave: caida rapida, por lo cual no habria presencia de raiz unitaria, y segundo, significancia estadistica en rezago 12 y 24, por lo cual habria presencia de estacionalidad y por tanto la serie no es estacionaria. Para el resto del analisis nos quedaremos con la serie sin tendencia a traves de STL, ya que preserva de una mejor manera el ciclo y aparte no distorsiona mucho la interpretacion economica como si lo hace la diferenciacion.
+```{r}
+#| warning: false
+#| message: false
+ggAcf(df_diff$Diff) +
+  labs(title = 'ACF Desempleo Diferenciada') +
+  theme_custom()
+```
+```{r}
+#| warning: false
+#| message: false
+ggAcf(df_stl$STL_sin_tendencia) +
+  labs(title = 'ACF Desempleo sin Tendencia') +
+  theme_custom()
+```
+
 ## Estacionalidad
-### Diagnóstico
+
+### Diagnóstico gráfico
+Primero podemos ver el heatmap de la serie. En enero se ve un aumento del desempleo a lo largo de todos los años.
+```{r}
+#| warning: false
+#| message: false
+desempleo_sin_trend_xts = xts(df_stl$STL_sin_tendencia, order.by = as.Date(df_stl$Fecha))
+ts_heatmap(desempleo_sin_trend_xts, title = 'Heatmap tasa de desempleo diferenciada')
+```
+Se confirma la estacionalidad, en enero el promedio de la diferencia en el desempleo es mayor que en el resto de meses.
 ```{r}
 #| warning: false
 #| message: false
 df_stl %>%
   mutate(Fecha = as.Date(Fecha)) %>%
-  plot_seasonal_diagnostics(
-    .date_var = Fecha,
-    .value = STL_sin_tendencia,
-    .interactive = FALSE
-  )
+  plot_seasonal_diagnostics(.date_var = Fecha, .value = STL_sin_tendencia, .feature_set = 'month.lbl',
+                            .geom = 'boxplot', .interactive = F, .title = 'Diagnóstico estacional por mes')
 ```
+Además, se puede graficar la subserie mensual.
+```{r}
+#| warning: false
+#| message: false
+df_stl %>% 
+  ggtime::gg_subseries(STL_sin_tendencia, period = 12) +
+  labs(title = 'Serie mensual', y = 'Desempleo sin tendencia (%)')+
+  theme_custom()
+```
+O el análisis con wavelet. No se ve nada claro. Probablemente por el choque en 2020.
+```{r}
+#| warning: false
+#| message: false
+wavelet = df_stl %>% 
+  transmute(Fecha = as.numeric(Fecha), STL_sin_tendencia) %>% 
+  as.matrix() %>% 
+  biwavelet::wt()
+par(mfrow = c(1,1))
+plot(wavelet, type = 'power.corr.norm', main = 'Bias-corrected wavelet power',plot.cb=TRUE)
+plot(wavelet, type = 'power.norm', main = 'Biased wavelet power',plot.cb=TRUE)
+```
+Ahora revisemos el periodograma. Tenemos que los periodos de mayor relevancia son 3, 4, 6 y 12 meses. Lo cual lleva a entender una estacionalidad anual de 12, pero es normal encontrar relevancia tambien en sus armonicos.
+```{r}
+# Periodograma 
+periodograma = mvspec(df_stl$STL_sin_tendencia, log='no', main = 'Periodograma desempleo sin tendencia')
+analisis_period = data.frame(frecuencia = periodograma$freq, spectrum = periodograma$spec) %>% 
+  mutate(periodo = 1/frecuencia)
+# Obtener los cuatro spectrum mas altos para graficar
+maxspec = analisis_period %>% 
+  arrange(desc(spectrum)) %>% 
+  slice(1:4) %>% 
+  pull(frecuencia, periodo)
+abline(v= maxspec, lty = 2, col = 'red', lwd = 1)
+# Mostrar cuales son los periodos con mayor espectro
+cat('Los periodos principales son:', paste(names(maxspec), reduce = 'meses,'))
+```
+
+
 ### Modelo con dummies
+Vemos significancia en las dummies, sobre todo de enero, febrero, octubre, noviembre y diciembre.
 ```{r}
 #| warning: false
 #| message: false
@@ -179,62 +312,136 @@ df_stl = df_stl %>%
   mutate(mes = month(Fecha))
 
 modelo_dummies = lm(STL_sin_tendencia ~ factor(mes) - 1, data = df_stl)
-
 summary(modelo_dummies)
 ```
+Veamos la estimacion sin estacionalidad.
+```{r}
+#| warning: false
+#| message: false
+# Encontremos la estimacion de la estacionalidad
+df_stl = df_stl %>% 
+  mutate(estacional = fitted(modelo_dummies),
+         sin_estacional = STL_sin_tendencia - estacional)
+
+# Graficar la serie sin tendencia vs la estacionalidad estimada
+gg_estacion_dummies = df_stl %>% 
+  transmute(Fecha = as.Date(Fecha),'Desempleo_sin_tendencia' = STL_sin_tendencia,estacional) %>% 
+  ggplot(aes(x = Fecha)) +
+  geom_line(aes(y = Desempleo_sin_tendencia, color = 'Desempleo_sin_tendencia'),alpha = 0.7) +
+  geom_line(aes(y = estacional, color = 'estacional')) +
+  scale_color_manual(values = c('Desempleo_sin_tendencia' = 'black','estacional' = 'red')) +
+  scale_x_date(date_breaks = '3 years') +
+  labs(color = 'Serie', title='Componente estacional', y='Desempleo sin tendencia y componente estacional') +
+  theme_custom()
+gg_estacion_dummies
+```
 ### Fourier
+Dado que el periodograma muestra un pico principal en la frecuencia anual y armónicos en 6, 4 y 3 meses, la estacionalidad puede modelarse mediante una expansión de Fourier con periodicidad 12 y orden K = 4. Este enfoque permite capturar de forma parsimoniosa la estructura estacional observada en la serie sin tendencia.
 ```{r}
 #| warning: false
 #| message: false
 df_fourier = df_stl %>%
-  mutate(t = 1:n())
+  transmute(Fecha = as.Date(Fecha),y = STL_sin_tendencia) %>%
+  mutate(t = 1:n(),Mes = month(Fecha))
 
+# A mano
 df_fourier = df_fourier %>%
-  mutate(
-    cos1 = cos(2*pi*t/12),
-    sin1 = sin(2*pi*t/12),
-    cos2 = cos(4*pi*t/12),
-    sin2 = sin(4*pi*t/12)
-  )
+  mutate(cos1 = cos(2*pi*1*t/12),sin1 = sin(2*pi*1*t/12),
+         cos2 = cos(2*pi*2*t/12),sin2 = sin(2*pi*2*t/12),
+         cos3 = cos(2*pi*3*t/12),sin3 = sin(2*pi*3*t/12),
+         cos4 = cos(2*pi*4*t/12),sin4 = sin(2*pi*4*t/12))
 
-mod_fourier = lm(STL_sin_tendencia ~ cos1 + sin1 + cos2 + sin2, data = df_fourier)
-
-summary(mod_fourier)
+mod_fourier_4 = lm(y ~ cos1 + sin1 + cos2 + sin2 + cos3 + sin3 + cos4 + sin4,
+                   data = df_fourier)
+summary(mod_fourier_4)
 ```
+
+```{r}
+df_fourier = df_fourier %>%
+  mutate(estacional_fourier = fitted(mod_fourier_4),resid_fourier = y - estacional_fourier)
+
+gg_fourier = df_fourier %>%
+  ggplot(aes(x = Fecha)) +
+  geom_line(aes(y = y, color = 'Serie sin tendencia'), alpha = 0.6) +
+  geom_line(aes(y = estacional_fourier, color = 'Estacionalidad Fourier'), linewidth = 1) +
+  scale_color_manual(values = c(
+    'Serie sin tendencia' = 'black',
+    'Estacionalidad Fourier' = 'red')) +
+  labs(title = 'Estacionalidad estimada con series de Fourier',x = 'Fecha',y = 'Desempleo',color = 'Serie') +
+  theme_custom()
+gg_fourier
+```
+
 ### GAM
+
 ```{r}
 #| warning: false
 #| message: false
-modelo_gam = gam(STL_sin_tendencia ~ s(month(Fecha), bs = "cc"), data = df_fourier)
-
+modelo_gam = gam(y ~ s(Mes, bs = 'cc', k =12), data = df_fourier)
 summary(modelo_gam)
 ```
-### Comparación de modelos
-```{r}
-AIC(modelo_dummies, mod_fourier, modelo_gam)
-```
-## Serie final
 ```{r}
 #| warning: false
 #| message: false
-df_stl = df_stl %>%
-  mutate(
-    estacional = fitted(modelo_dummies),
-    sin_estacional = STL_sin_tendencia - estacional
-  )
-```
-```{r}
-#| warning: false
-#| message: false
-ggplot(df_stl, aes(x = as.Date(Fecha), y = sin_estacional)) +
-  geom_line() +
-  labs(title = "Serie sin tendencia ni estacionalidad") +
+df_fourier = df_fourier %>% 
+  mutate(estacional_gam = fitted(modelo_gam),
+         resid_gam = resid(modelo_gam))
+gg_gam = df_fourier %>%
+  ggplot(aes(x = Fecha)) +
+  geom_line(aes(y = y, color = 'Serie sin tendencia'), alpha = 0.6) +
+  geom_line(aes(y = estacional_gam, color = 'Estacionalidad GAM'), linewidth = 1) +
+  scale_color_manual(values = c(
+    'Serie sin tendencia' = 'black',
+    'Estacionalidad GAM' = 'blue')) +
+  labs(title = 'Estacionalidad estimada con modelo GAM',x = 'Fecha',y = 'Desempleo',color = 'Serie') +
   theme_custom()
+gg_gam
 ```
-### ACF y PACF
+Veamos en una sola gráfica la estimación de la estacionalidad de estos dos métodos.Ambos enfoques permiten capturar la estacionalidad de la serie de manera adecuada. Sin embargo, el modelo de Fourier impone una estructura funcional basada en armónicos sinusoidales, lo que resulta en patrones más regulares y pronunciados. En contraste, el modelo GAM ofrece una mayor flexibilidad al estimar la estacionalidad de forma no paramétrica, produciendo ajustes más suaves y adaptados a la forma observada en los datos. Esto sugiere que, si bien Fourier es útil para representar ciclos periódicos bien definidos, el enfoque GAM puede capturar mejor irregularidades en la estructura estacional.
+```{r}
+gg_gam_fourier = df_fourier %>%
+  ggplot(aes(x = Fecha)) +
+  geom_line(aes(y = y, color = 'Serie sin tendencia'), alpha = 0.6) +
+  geom_line(aes(y = estacional_gam, color = 'Estacionalidad GAM'), linewidth = 1) +
+  geom_line(aes(y = estacional_fourier, color = 'Estacionalidad Fourier'), linewidth = 1)+
+  scale_color_manual(values = c('Serie sin tendencia' = 'black', 'Estacionalidad GAM' = 'blue',
+                                'Estacionalidad Fourier' = 'red')) +
+  labs(title = 'Estacionalidad estimada con modelo GAM y series de Fourier',x = 'Fecha',y = 'Desempleo',color = 'Serie') +
+  scale_x_date(breaks = '3 years')+
+  theme_custom()
+gg_gam_fourier
+```
+### Comparación de los tres modelos
+El que minimiza este indice es el modelo de dummies. Sumado a su interpretabilidad, vamos a quedarnos con este modelo, para obtener la serie sin estacionalidad, y a investigar sus propiedades.
+```{r}
+AIC(modelo_dummies, mod_fourier_4, modelo_gam)
+```
+
+## Serie final
+Los residuales presentan comportamiento de ruido blanco, a excepcion del 2020, el cual corresponde a un quiebre estructural, y deberia ser modelado por una dummy o algunotro metodo que sea adecuado.
 ```{r}
 #| warning: false
 #| message: false
-ggAcf(df_stl$sin_estacional) + theme_custom()
-ggPacf(df_stl$sin_estacional) + theme_custom()
+gg_resid_dummies = df_stl %>% 
+  ggplot(aes(x=as.Date(Fecha), y=sin_estacional)) +
+  geom_line() +
+  scale_x_date(date_breaks = '3 years') +
+  labs(title='Desempleo sin tendencia ni estacionalidad', y='Desempleo (%)', x = 'Fecha') +
+  theme_custom()
+gg_resid_dummies
+```
+
+### ACF y PACF
+Parece que tiene todavia correlacion con los primeros rezagos, pero ya no presenta raiz unitaria ni estacionalidad. El correlograma parcial muestra un único rezago significativo, lo que indica que la dinámica de la serie puede ser adecuadamente capturada por un modelo autoregresivo de orden 1. Este resultado es consistente con el comportamiento observado en la función de autocorrelación, donde la persistencia decae gradualmente, sugiriendo una estructura AR(1).
+```{r}
+#| warning: false
+#| message: false
+gg_acf_final = ggAcf(df_stl$sin_estacional) +
+  labs(title = 'ACF Desempleo Final') +
+  theme_custom()
+gg_pacf_final = ggPacf(df_stl$sin_estacional) +
+  labs(title = 'PACF Desempleo Final') +
+  theme_custom()
+gg_acf_final
+gg_pacf_final
 ```
