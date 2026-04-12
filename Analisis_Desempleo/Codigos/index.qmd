@@ -1,15 +1,15 @@
 ---
-title: "Análisis descriptivo: Tasa de desempleo Colombia"
+  title: "Análisis descriptivo: Tasa de desempleo Colombia"
 format: 
   html:
-    toc: true
-    number-sections: true
-    embed-resources: true
+  toc: true
+number-sections: true
+embed-resources: true
 ---
-
-## Librerías y configuración
-
-```{r}
+  
+  ## Librerías y configuración
+  
+  ```{r}
 #| message: false
 #| warning: false
 
@@ -17,9 +17,9 @@ rm(list = ls())
 
 library(pacman)
 p_load(tidyverse, TSstudio, readxl, zoo, xts, feasts, fable, timetk,
-  tsibble, lubridate, astsa, car, forecast, VGAM, TSA,
-  nonlinearTseries, tseriesChaos, plotly, rstanarm, rstan,
-  bayesplot, sarima, patchwork, mgcv, broom, biwavelet, ggtime)
+       tsibble, lubridate, astsa, car, forecast, VGAM, TSA,
+       nonlinearTseries, tseriesChaos, plotly, rstanarm, rstan,
+       bayesplot, sarima, patchwork, mgcv, broom, biwavelet, ggtime)
 
 # Tema para usar en ggplot
 theme_custom = function() {
@@ -149,7 +149,7 @@ desempleo_tsibble %>%
   labs(title = 'Comparación de suavizamientos LOESS', x = 'Fecha',
        y = 'Tasa de desempleo', color = 'Serie') +
   scale_color_manual(values = c('Serie original' = 'black', 'LOESS (span = 0.2)' = 'blue',
-    'LOESS (span = 0.5)' = 'red','LOESS (span = 0.8)' = 'green')) +
+                                'LOESS (span = 0.5)' = 'red','LOESS (span = 0.8)' = 'green')) +
   scale_x_date(breaks = '3 years')+
   theme_custom()
 ```
