@@ -1,0 +1,48 @@
+name: Render Notebook to HTML
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Prediccion_ML/ES_Trees_RNN_LSTM.ipynb'
+  workflow_dispatch:  # allows manual trigger from GitHub UI
+
+permissions:
+  contents: write  # needed to push the generated HTML back to the repo
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install nbconvert[webpdf] \
+            pandas numpy matplotlib statsmodels \
+            scikit-learn tensorflow keras-tuner \
+            jupyter nbformat
+
+      - name: Convert notebook to HTML
+        run: |
+          jupyter nbconvert \
+            --to html \
+            --no-input \
+            --output ES_Trees_RNN_LSTM \
+            ES_Trees_RNN_LSTM.ipynb
+          # --no-input hides code cells, remove that flag if you want code visible
+
+      - name: Commit and push HTML
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ES_Trees_RNN_LSTM.html
+          git diff --cached --quiet || git commit -m "Render notebook to HTML [skip ci]"
+          git push
