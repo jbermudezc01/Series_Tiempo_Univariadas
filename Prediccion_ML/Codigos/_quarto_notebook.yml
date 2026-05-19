@@ -1,0 +1,6 @@
+format:
+  html:
+    output-file: ../../ES_Trees_RNN_LSTM.html
+    embed-resources: true
+    toc: true
+    code-fold: false
