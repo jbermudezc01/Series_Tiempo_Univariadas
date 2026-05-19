@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Prediccion_ML/ES_Trees_RNN_LSTM.ipynb'
+      - 'Prediccion_ML/Codigos/ES_Trees_RNN_LSTM.ipynb'
   workflow_dispatch:  # allows manual trigger from GitHub UI
 
 permissions:
